@@ -74,10 +74,11 @@ echo "root:$ROOT_PASSWORD" | chpasswd
 useradd -m -G wheel $USERNAME
 echo "$USERNAME:$USER_PASSWORD" | chpasswd
 
-# Exit chroot environment
+# Exit chroot 
 exit
 EOF
 
 #reboot into the new system
+sleep 10
 umount -R /mnt
 reboot
