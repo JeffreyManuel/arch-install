@@ -8,15 +8,15 @@ timedatectl set-ntp true
 parted /dev/sda mklabel gpt
 parted /dev/sda mkpart ESP fat32 1MiB 513MiB
 parted /dev/sda set 1 boot on
-parted /dev/sda mkpart primary ext4 513MiB 100%
+parted /dev/sda mkpart primary btrfs 513MiB 100%
 mkfs.fat -F32 /dev/sda1
-mkfs.ext4 /dev/sda2
+mkfs.btrfs /dev/sda2
 mount /dev/sda2 /mnt
 mkdir /mnt/boot
 mount /dev/sda1 /mnt/boot
 
 # Install Arch Linux base system
-pacstrap /mnt base base-devel linux linux-firmware efibootmgr
+pacstrap /mnt base base-devel linux linux-firmware efibootmgr btrfs-progs
 
 # Generate fstab file
 genfstab -U /mnt >> /mnt/etc/fstab
@@ -40,6 +40,11 @@ echo "myhostname" > /etc/hostname
 echo "127.0.0.1 localhost" > /etc/hosts
 echo "::1       localhost" >> /etc/hosts
 echo "127.0.1.1 myhostname.localdomain myhostname" >> /etc/hosts
+
+# Install GRUB and configure bootloader
+pacman -S grub efibootmgr
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch_grub
+grub-mkconfig -o /boot/grub/grub.cfg
 
 # Install KDE desktop environment and GDM display manager
 pacman -S kde plasma-meta gdm
