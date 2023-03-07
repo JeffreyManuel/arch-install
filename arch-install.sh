@@ -4,6 +4,8 @@
 HOSTNAME="test-vm"
 TIMEZONE="Asia/Kolkata"
 
+# Exit immediately if any command fails
+set -e
 
 # Set up keyboard layout
 loadkeys us
@@ -37,7 +39,7 @@ btrfs subvolume create /mnt/@snapshots
 umount /mnt
 
 mount -o subvol=@,compress=zstd /dev/sda2 /mnt
-mkdir /mnt/{boot,home,var/log,var/cache/pacman/pkg,.snapshots}
+mkdir -p /mnt/{boot,home,var/log,var/cache/pacman/pkg,.snapshots}
 mount -o subvol=@home,compress=zstd /dev/sda2 /mnt/home
 mount -o subvol=@log,compress=zstd /dev/sda2 /mnt/var/log
 mount -o subvol=@pkg,compress=zstd /dev/sda2 /mnt/var/cache/pacman/pkg
@@ -57,34 +59,29 @@ genfstab -U /mnt >> /mnt/etc/fstab
 
 # Chroot into the new system
 arch-chroot /mnt /bin/bash <<EOF
-
 # Set the hostname
 echo $HOSTNAME > /etc/hostname
-
 # Set the timezone
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
-
 # Set the locale
 echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
-
-
 # Enable parallel downloading
 sed -i 's/#ParallelDownloads = 5/ParallelDownloads = 10/' /etc/pacman.conf
-
 # Install and configure GRUB
 pacman -S grub efibootmgr
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
-
 # Enable and start SDDM
 systemctl enable sddm.service
 systemctl start sddm.service
-
-EOF
-
-# Unmount
+# Set a root password
+passwd
+# Create a non-root user
+useradd -m -G wheel username
+passwd username
+# Exit chroot
 
 # Exit chroot environment and reboot into the new system
 exit
