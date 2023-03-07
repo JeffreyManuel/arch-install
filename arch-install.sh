@@ -3,6 +3,9 @@
 # Update system clock
 timedatectl set-ntp true
 
+# Set India mirror
+echo "Server = http://mirror.cse.iitk.ac.in/archlinux/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+
 # Partition the disk (assumes /dev/sda is the target disk)
 # You may need to adjust this section to match your specific partitioning needs
 parted /dev/sda mklabel gpt
