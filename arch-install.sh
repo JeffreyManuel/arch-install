@@ -1,62 +1,90 @@
 #!/bin/bash
 
-# Update system clock
+# Set variables
+HOSTNAME="test-vm"
+TIMEZONE="Asia/Kolkata"
+
+
+# Set up keyboard layout
+loadkeys us
+
+# Connect to the internet
+dhcpcd
+
+# Update the system clock
 timedatectl set-ntp true
 
-# Set India mirror
-echo "Server = http://mirror.cse.iitk.ac.in/archlinux/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+# Partition the disk
+# Assuming the disk is /dev/sda
+# and the partition table is GPT
+sgdisk -Z /dev/sda
+sgdisk -n 1:0:+512M -t 1:ef00 -c 1:"EFI System Partition" /dev/sda
+sgdisk -n 2:0:0 -t 2:8300 -c 2:"Arch Linux" /dev/sda
 
-# Partition the disk (assumes /dev/sda is the target disk)
-# You may need to adjust this section to match your specific partitioning needs
-parted /dev/sda mklabel gpt
-parted /dev/sda mkpart ESP fat32 1MiB 513MiB
-parted /dev/sda set 1 boot on
-parted /dev/sda mkpart primary btrfs 513MiB 100%
+# Format the partitions
 mkfs.fat -F32 /dev/sda1
 mkfs.btrfs /dev/sda2
+
+# Mount the root partition
 mount /dev/sda2 /mnt
-mkdir /mnt/boot
+
+# Create and mount the subvolumes
+btrfs subvolume create /mnt/@
+btrfs subvolume create /mnt/@home
+btrfs subvolume create /mnt/@log
+btrfs subvolume create /mnt/@pkg
+btrfs subvolume create /mnt/@snapshots
+umount /mnt
+
+mount -o subvol=@,compress=zstd /dev/sda2 /mnt
+mkdir /mnt/{boot,home,var/log,var/cache/pacman/pkg,.snapshots}
+mount -o subvol=@home,compress=zstd /dev/sda2 /mnt/home
+mount -o subvol=@log,compress=zstd /dev/sda2 /mnt/var/log
+mount -o subvol=@pkg,compress=zstd /dev/sda2 /mnt/var/cache/pacman/pkg
+mount -o subvol=@snapshots,compress=zstd /dev/sda2 /mnt/.snapshots
 mount /dev/sda1 /mnt/boot
 
-# Install Arch Linux base system
-pacstrap /mnt base base-devel linux linux-firmware efibootmgr btrfs-progs
+# Set the mirrorlist to an Indian mirror using Reflector and rsync
+pacman -Syy reflector
+reflector --country India --age 12 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+pacman -Syy
 
-# Generate fstab file
+# Install the base system and KDE packages
+pacstrap /mnt base base-devel linux linux-firmware nano btrfs-progs sddm plasma kde-applications
+
+# Generate fstab
 genfstab -U /mnt >> /mnt/etc/fstab
 
 # Chroot into the new system
-arch-chroot /mnt /bin/bash
+arch-chroot /mnt /bin/bash <<EOF
 
-# Set timezone (replace with your own timezone)
-ln -sf /usr/share/zoneinfo/Region/City /etc/localtime
-hwclock --systohc
+# Set the hostname
+echo $HOSTNAME > /etc/hostname
 
-# Generate locale
-echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+# Set the timezone
+ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
+
+# Set the locale
+echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
-# Set hostname
-echo "myhostname" > /etc/hostname
 
-# Add hosts entry
-echo "127.0.0.1 localhost" > /etc/hosts
-echo "::1       localhost" >> /etc/hosts
-echo "127.0.1.1 myhostname.localdomain myhostname" >> /etc/hosts
+# Enable parallel downloading
+sed -i 's/#ParallelDownloads = 5/ParallelDownloads = 10/' /etc/pacman.conf
 
-# Install GRUB and configure bootloader
+# Install and configure GRUB
 pacman -S grub efibootmgr
-grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=arch_grub
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# Install KDE desktop environment and GDM display manager
-pacman -S kde plasma-meta gdm
+# Enable and start SDDM
+systemctl enable sddm.service
+systemctl start sddm.service
 
-# Enable GDM service
-systemctl enable gdm.service
+EOF
 
-# Set root password
-passwd
+# Unmount
 
 # Exit chroot environment and reboot into the new system
 exit
